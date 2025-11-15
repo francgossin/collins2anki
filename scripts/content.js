@@ -88,7 +88,14 @@ function cleanHTMLForAnki(html) {
 
 function getWordData() {
     let wordDefs = [];
-    document.querySelectorAll('.dictionary.cB').forEach(dict => {
+    function getDictEntryCSS() {
+        if (window.location.href.includes('german-english')) {
+            return '.dictionary.cB';
+        } else if (window.location.href.includes('french-english')) {
+            return '.dictionary > .dictentry > .cB';
+        }
+    }
+    document.querySelectorAll(getDictEntryCSS()).forEach(dict => {
         const wordEl = dict.querySelector('.title_container span.orth');
         const word = wordEl ? wordEl.innerText : '';
         
