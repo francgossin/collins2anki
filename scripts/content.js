@@ -92,7 +92,7 @@ function getWordData() {
         if (window.location.href.includes('german-english')) {
             return '.dictionary.cB';
         } else if (window.location.href.includes('french-english')) {
-            return '.dictionary > .dictentry > .cB';
+            return '.dictionary > .dictentry > .cB, .dictionaries.dictionary > .dictionary.dictentry > .dictlink > .cB:not([data-type-block="definition.title.type.french_easy"])';
         }
     }
     document.querySelectorAll(getDictEntryCSS()).forEach(dict => {
