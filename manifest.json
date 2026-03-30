@@ -1,11 +1,12 @@
 {
   "name": "Collins to Anki Deck",
   "description": "Save words from Collins Dictionary and export to Anki CSV",
-  "version": "1.4",
+  "version": "1.5",
   "manifest_version": 3,
   "permissions": [
     "storage",
     "activeTab",
+    "tabs",
     "scripting",
     "downloads"
   ],

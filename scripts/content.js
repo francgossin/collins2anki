@@ -259,6 +259,393 @@ function exportSavedWordsToCSV() {
     });
 }
 
+function buildExampleEntry(wordData, exampleHTML) {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = exampleHTML;
+
+    const sourceQuoteElements = tempDiv.querySelectorAll('.quote:not(.cit.type-translation .quote)');
+    const exampleText = Array.from(sourceQuoteElements)
+        .map(el => el.innerText.trim())
+        .filter(Boolean)
+        .join(' ');
+
+    const translationElements = tempDiv.querySelectorAll('.cit.type-translation .quote');
+    const translation = Array.from(translationElements)
+        .map(el => el.innerText.trim())
+        .filter(Boolean)
+        .join(', ');
+
+    return {
+        word: wordData.word,
+        exampleText,
+        translation,
+        fullHTML: exampleHTML,
+        timestamp: new Date().toISOString()
+    };
+}
+
+function cloneData(data) {
+    return JSON.parse(JSON.stringify(data));
+}
+
+function getWordKey(wordData) {
+    return `${wordData.word}||${wordData.pos || ''}`;
+}
+
+function getExampleKey(exampleData) {
+    return `${exampleData.word}||${exampleData.exampleText || ''}||${exampleData.translation || ''}`;
+}
+
+function showPageStatus(message, type = 'success') {
+    let statusEl = document.getElementById('collins2anki-save-status');
+    if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'collins2anki-save-status';
+        statusEl.style.position = 'fixed';
+        statusEl.style.right = '20px';
+        statusEl.style.bottom = '164px';
+        statusEl.style.zIndex = '2147483647';
+        statusEl.style.padding = '10px 14px';
+        statusEl.style.borderRadius = '8px';
+        statusEl.style.fontSize = '13px';
+        statusEl.style.fontFamily = 'Arial, sans-serif';
+        statusEl.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.2)';
+        statusEl.style.opacity = '0';
+        statusEl.style.transition = 'opacity 0.2s ease';
+        document.body.appendChild(statusEl);
+    }
+
+    statusEl.textContent = message;
+    statusEl.style.backgroundColor = type === 'error' ? '#c62828' : '#2e7d32';
+    statusEl.style.color = '#ffffff';
+    statusEl.style.opacity = '1';
+
+    window.clearTimeout(window.collins2ankiStatusTimer);
+    window.collins2ankiStatusTimer = window.setTimeout(() => {
+        statusEl.style.opacity = '0';
+    }, 3000);
+}
+
+function setControlButtonStyle(button, backgroundColor) {
+    button.style.position = 'fixed';
+    button.style.right = '20px';
+    button.style.zIndex = '2147483647';
+    button.style.background = backgroundColor;
+    button.style.color = '#ffffff';
+    button.style.border = 'none';
+    button.style.borderRadius = '10px';
+    button.style.padding = '10px 14px';
+    button.style.fontSize = '13px';
+    button.style.fontWeight = '600';
+    button.style.fontFamily = 'Arial, sans-serif';
+    button.style.cursor = 'pointer';
+    button.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.25)';
+}
+
+function updatePageControlVisibility() {
+    const toggleButton = document.getElementById('collins2anki-auto-save-toggle-btn');
+    const undoButton = document.getElementById('collins2anki-auto-undo-btn');
+
+    if (toggleButton) {
+        const enabled = Boolean(window.collins2ankiAutoSaveEnabled);
+        toggleButton.textContent = enabled ? 'Auto Save: ON' : 'Auto Save: OFF';
+        toggleButton.style.background = enabled ? '#2e7d32' : '#6c757d';
+    }
+
+    if (undoButton) {
+        if (window.collins2ankiAutoSaveEnabled) {
+            undoButton.style.display = 'block';
+            undoButton.disabled = !window.collins2ankiLastAutoSaveSnapshot;
+            undoButton.style.opacity = undoButton.disabled ? '0.6' : '1';
+            undoButton.style.cursor = undoButton.disabled ? 'not-allowed' : 'pointer';
+        } else {
+            undoButton.style.display = 'none';
+        }
+    }
+}
+
+function saveAllWordsAndExamples(options = {}) {
+    const trackUndo = Boolean(options.trackUndo);
+    const source = options.source || 'manual';
+    const callback = options.callback || function() {};
+    const wordDataArray = getWordData();
+
+    if (!wordDataArray || wordDataArray.length === 0) {
+        showPageStatus('No words found on this page', 'error');
+        callback(false, {
+            wordsSaved: 0,
+            wordsUpdated: 0,
+            examplesSaved: 0,
+            examplesUpdated: 0
+        });
+        return;
+    }
+
+    chrome.storage.local.get(['savedWords', 'savedExamples'], function(result) {
+        const savedWords = result.savedWords || [];
+        const savedExamples = result.savedExamples || [];
+        const wordChanges = [];
+        const exampleChanges = [];
+
+        let wordsSaved = 0;
+        let wordsUpdated = 0;
+        let examplesSaved = 0;
+        let examplesUpdated = 0;
+
+        wordDataArray.forEach(wordData => {
+            const existingWordIndex = savedWords.findIndex(
+                w => w.word === wordData.word && w.pos === wordData.pos
+            );
+
+            if (existingWordIndex !== -1) {
+                if (trackUndo) {
+                    wordChanges.push({
+                        key: getWordKey(wordData),
+                        existed: true,
+                        previous: cloneData(savedWords[existingWordIndex])
+                    });
+                }
+                savedWords[existingWordIndex] = wordData;
+                wordsUpdated++;
+            } else {
+                if (trackUndo) {
+                    wordChanges.push({
+                        key: getWordKey(wordData),
+                        existed: false
+                    });
+                }
+                savedWords.push(wordData);
+                wordsSaved++;
+            }
+
+            const examples = wordData.examples || [];
+            examples.forEach(example => {
+                const exampleEntry = buildExampleEntry(wordData, example.html);
+                const existingExampleIndex = savedExamples.findIndex(
+                    e =>
+                        e.word === exampleEntry.word &&
+                        e.exampleText === exampleEntry.exampleText &&
+                        e.translation === exampleEntry.translation
+                );
+
+                if (existingExampleIndex !== -1) {
+                    if (trackUndo) {
+                        exampleChanges.push({
+                            key: getExampleKey(exampleEntry),
+                            existed: true,
+                            previous: cloneData(savedExamples[existingExampleIndex])
+                        });
+                    }
+                    savedExamples[existingExampleIndex] = exampleEntry;
+                    examplesUpdated++;
+                } else {
+                    if (trackUndo) {
+                        exampleChanges.push({
+                            key: getExampleKey(exampleEntry),
+                            existed: false
+                        });
+                    }
+                    savedExamples.push(exampleEntry);
+                    examplesSaved++;
+                }
+            });
+        });
+
+        chrome.storage.local.set(
+            {
+                savedWords: savedWords,
+                savedExamples: savedExamples
+            },
+            function() {
+                const summary = `${wordsSaved} word(s) saved, ${wordsUpdated} updated; ${examplesSaved} example(s) saved, ${examplesUpdated} updated`;
+                showPageStatus(summary, 'success');
+
+                if (trackUndo) {
+                    window.collins2ankiLastAutoSaveSnapshot = {
+                        source,
+                        wordChanges,
+                        exampleChanges
+                    };
+                    updatePageControlVisibility();
+                }
+
+                callback(true, {
+                    wordsSaved,
+                    wordsUpdated,
+                    examplesSaved,
+                    examplesUpdated
+                });
+            }
+        );
+    });
+}
+
+function retractLastAutoSave() {
+    const snapshot = window.collins2ankiLastAutoSaveSnapshot;
+    if (!snapshot) {
+        showPageStatus('Nothing to retract yet', 'error');
+        return;
+    }
+
+    chrome.storage.local.get(['savedWords', 'savedExamples'], function(result) {
+        let savedWords = result.savedWords || [];
+        let savedExamples = result.savedExamples || [];
+
+        snapshot.wordChanges.forEach(change => {
+            const currentIndex = savedWords.findIndex(item => getWordKey(item) === change.key);
+            if (change.existed) {
+                if (currentIndex !== -1) {
+                    savedWords[currentIndex] = change.previous;
+                } else {
+                    savedWords.push(change.previous);
+                }
+            } else if (currentIndex !== -1) {
+                savedWords.splice(currentIndex, 1);
+            }
+        });
+
+        snapshot.exampleChanges.forEach(change => {
+            const currentIndex = savedExamples.findIndex(item => getExampleKey(item) === change.key);
+            if (change.existed) {
+                if (currentIndex !== -1) {
+                    savedExamples[currentIndex] = change.previous;
+                } else {
+                    savedExamples.push(change.previous);
+                }
+            } else if (currentIndex !== -1) {
+                savedExamples.splice(currentIndex, 1);
+            }
+        });
+
+        chrome.storage.local.set(
+            {
+                savedWords,
+                savedExamples
+            },
+            function() {
+                window.collins2ankiLastAutoSaveSnapshot = null;
+                updatePageControlVisibility();
+                showPageStatus('Auto-save reverted (Ctrl-Z)', 'success');
+            }
+        );
+    });
+}
+
+function enableAutoSave(enabled) {
+    chrome.storage.local.set({ collins2ankiAutoSaveEnabled: enabled }, function() {
+        window.collins2ankiAutoSaveEnabled = enabled;
+
+        if (!enabled) {
+            window.collins2ankiLastAutoSaveSnapshot = null;
+            showPageStatus('Auto Save disabled. Manual save mode.', 'success');
+            updatePageControlVisibility();
+            return;
+        }
+
+        showPageStatus('Auto Save enabled', 'success');
+        updatePageControlVisibility();
+
+        // If page is already fully loaded, run auto-save immediately.
+        if (document.readyState === 'complete') {
+            saveAllWordsAndExamples({ trackUndo: true, source: 'auto' });
+        }
+    });
+}
+
+function tryAutoSaveAfterPageLoad() {
+    if (!window.collins2ankiAutoSaveEnabled || window.collins2ankiAutoSaveDoneForUrl === window.location.href) {
+        return;
+    }
+
+    window.collins2ankiAutoSaveDoneForUrl = window.location.href;
+    saveAllWordsAndExamples({
+        trackUndo: true,
+        source: 'auto'
+    });
+}
+
+function injectPageButtons() {
+    if (!document.body || document.getElementById('collins2anki-save-all-btn')) {
+        return;
+    }
+
+    window.collins2ankiAutoSaveEnabled = false;
+    window.collins2ankiLastAutoSaveSnapshot = null;
+    window.collins2ankiAutoSaveDoneForUrl = null;
+
+    const manualSaveButton = document.createElement('button');
+    manualSaveButton.id = 'collins2anki-save-all-btn';
+    manualSaveButton.type = 'button';
+    manualSaveButton.textContent = 'Save words + examples';
+    manualSaveButton.title = 'Save all words and examples from this page';
+    setControlButtonStyle(manualSaveButton, '#1565c0');
+    manualSaveButton.style.bottom = '20px';
+
+    const autoToggleButton = document.createElement('button');
+    autoToggleButton.id = 'collins2anki-auto-save-toggle-btn';
+    autoToggleButton.type = 'button';
+    autoToggleButton.title = 'Enable or disable automatic save after full page load';
+    setControlButtonStyle(autoToggleButton, '#6c757d');
+    autoToggleButton.style.bottom = '68px';
+
+    const undoButton = document.createElement('button');
+    undoButton.id = 'collins2anki-auto-undo-btn';
+    undoButton.type = 'button';
+    undoButton.textContent = 'Ctrl-Z: Retract Auto Save';
+    undoButton.title = 'Undo the latest automatic save';
+    setControlButtonStyle(undoButton, '#c62828');
+    undoButton.style.bottom = '116px';
+
+    manualSaveButton.addEventListener('click', function() {
+        manualSaveButton.disabled = true;
+        const originalText = manualSaveButton.textContent;
+        manualSaveButton.textContent = 'Saving...';
+
+        saveAllWordsAndExamples({ trackUndo: false, source: 'manual' });
+
+        window.setTimeout(() => {
+            manualSaveButton.disabled = false;
+            manualSaveButton.textContent = originalText;
+        }, 900);
+    });
+
+    autoToggleButton.addEventListener('click', function() {
+        enableAutoSave(!window.collins2ankiAutoSaveEnabled);
+    });
+
+    undoButton.addEventListener('click', function() {
+        if (undoButton.disabled) {
+            return;
+        }
+        retractLastAutoSave();
+    });
+
+    document.body.appendChild(manualSaveButton);
+    document.body.appendChild(autoToggleButton);
+    document.body.appendChild(undoButton);
+
+    chrome.storage.local.get(['collins2ankiAutoSaveEnabled'], function(result) {
+        window.collins2ankiAutoSaveEnabled = Boolean(result.collins2ankiAutoSaveEnabled);
+        updatePageControlVisibility();
+
+        if (window.collins2ankiAutoSaveEnabled) {
+            if (document.readyState === 'complete') {
+                tryAutoSaveAfterPageLoad();
+            } else {
+                window.addEventListener('load', function() {
+                    tryAutoSaveAfterPageLoad();
+                }, { once: true });
+            }
+        }
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectPageButtons);
+} else {
+    injectPageButtons();
+}
+
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -268,6 +655,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: true, data: wordData });
         } catch (error) {
             console.log('Error getting word data:', error);
+            sendResponse({ success: false, error: error.message });
+        }
+    } else if (request.action === 'saveAllFromPage') {
+        try {
+            saveAllWordsAndExamples({
+                trackUndo: false,
+                source: 'popup-batch',
+                callback: (success, result) => {
+                    sendResponse({
+                        success,
+                        data: result,
+                        error: success ? null : 'No words found on this page'
+                    });
+                }
+            });
+        } catch (error) {
             sendResponse({ success: false, error: error.message });
         }
     }

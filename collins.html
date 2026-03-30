@@ -482,6 +482,207 @@
             background: #667eea;
             border-radius: 10px;
         }
+
+        .batch-card {
+            margin-top: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 12px;
+            background: #f8f9fa;
+        }
+
+        .batch-card h4 {
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+
+        .batch-help {
+            font-size: 11px;
+            color: #6c757d;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .batch-input {
+            width: 100%;
+            min-height: 90px;
+            resize: vertical;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: Consolas, 'Courier New', monospace;
+            outline: none;
+            background: white;
+        }
+
+        .batch-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+        }
+
+        .batch-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .batch-actions button {
+            flex: 1;
+            padding: 8px 10px;
+            font-size: 12px;
+            border-radius: 6px;
+        }
+
+        #start-batch-save {
+            background: #0d6efd;
+            color: white;
+        }
+
+        #stop-batch-save {
+            background: #6c757d;
+            color: white;
+        }
+
+        #stop-batch-save:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .batch-progress {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #495057;
+            min-height: 18px;
+        }
+
+        .batch-log-toolbar {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .batch-log-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        #clear-batch-log {
+            background: #adb5bd;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .batch-log {
+            margin-top: 8px;
+            max-height: 190px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            background: white;
+        }
+
+        .batch-log-empty {
+            padding: 10px;
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+
+        .batch-log-item {
+            padding: 10px;
+            border-bottom: 1px solid #f1f3f5;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .batch-log-item:last-child {
+            border-bottom: none;
+        }
+
+        .batch-log-item.success {
+            border-left: 3px solid #2e7d32;
+        }
+
+        .batch-log-item.error {
+            border-left: 3px solid #dc3545;
+            background: #fff5f5;
+        }
+
+        .batch-log-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+
+        .batch-log-status {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        .batch-log-status.saved {
+            background: #d3f9d8;
+            color: #2b8a3e;
+        }
+
+        .batch-log-status.updated {
+            background: #d0ebff;
+            color: #1864ab;
+        }
+
+        .batch-log-status.saved-updated {
+            background: #e5dbff;
+            color: #5f3dc4;
+        }
+
+        .batch-log-status.failed {
+            background: #ffe3e3;
+            color: #c92a2a;
+        }
+
+        .batch-log-meta {
+            color: #6c757d;
+            font-size: 10px;
+        }
+
+        .batch-log-code {
+            font-family: Consolas, 'Courier New', monospace;
+            color: #343a40;
+            word-break: break-all;
+        }
+
+        .batch-log-detail {
+            color: #495057;
+        }
+
+        .batch-log-error {
+            margin-top: 4px;
+            color: #c92a2a;
+            word-break: break-word;
+        }
+
+        .batch-log::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .batch-log::-webkit-scrollbar-thumb {
+            background: #adb5bd;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
@@ -541,11 +742,31 @@
                     <span>Clear Examples</span>
                 </button>
             </div>
+
+            <div class="batch-card">
+                <h4>Batch Auto Save by Word List</h4>
+                <p class="batch-help">One word per line. The extension uses the dictCode from the current tab URL, then visits Collins search API pages and saves full words + examples for each.</p>
+                <textarea id="batch-word-list" class="batch-input" placeholder="a
+b
+c"></textarea>
+                <div class="batch-actions">
+                    <button id="start-batch-save">Start Batch Save</button>
+                    <button id="stop-batch-save" disabled>Stop</button>
+                </div>
+                <div id="batch-progress" class="batch-progress"></div>
+                <div class="batch-log-toolbar">
+                    <div id="batch-log-title" class="batch-log-title">Batch Log (0)</div>
+                    <button id="clear-batch-log" type="button">Clear Log</button>
+                </div>
+                <div id="batch-log" class="batch-log">
+                    <div class="batch-log-empty">No batch logs yet.</div>
+                </div>
+            </div>
         </div>
 
         <div id="save-options-panel" class="save-options-panel" style="display: none;">
             <div class="panel-header">
-                <h3>Select examples to save</h3>
+                <h3 id="save-options-title">Select items to save</h3>
                 <button id="close-panel" class="close-btn">✕</button>
             </div>
             <div class="panel-controls">
@@ -554,7 +775,7 @@
                 <button id="save-selected" class="control-btn primary">Save Selected</button>
             </div>
             <div id="save-options-content" class="save-options-content">
-                <p class="loading">Loading examples...</p>
+                <p class="loading">Loading...</p>
             </div>
         </div>
 
